@@ -1,0 +1,41 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Go
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+
+# Encore
+.encore/
+.rundir/
+
+# Frontend (Node.js)
+apps/frontend/node_modules/
+apps/frontend/dist/
+apps/frontend/build/
+apps/frontend/.next/
+apps/frontend/.turbo/
+
+# Environment & secrets
+.env
+.env.*
+.secrets.local.cue
+*.pem
+*.key
+
+# Logs
+*.log
+logs/
