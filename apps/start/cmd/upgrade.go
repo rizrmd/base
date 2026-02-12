@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Colors for terminal output
@@ -93,17 +94,13 @@ func runUpgrade(rootDir string, args []string) {
 	}
 
 	// Check current state
-	versionFile := filepath.Join(rootDir, ".base-version")
 	commitFile := filepath.Join(rootDir, ".base-commit")
-
-	currentVersion := readVersionFile(versionFile)
 	currentCommit := readFile(commitFile)
 	isFreshInstall := currentCommit == ""
 
 	if isFreshInstall {
 		fmt.Printf("%sFresh install detected%s\n", colorYellow, colorReset)
 	} else {
-		fmt.Printf("Current version: %s\n", currentVersion)
 		fmt.Printf("Current commit:  %s\n", currentCommit[:min(8, len(currentCommit))])
 	}
 
@@ -173,30 +170,27 @@ func runUpgrade(rootDir string, args []string) {
 		}
 		fmt.Printf("Copied %d files\n", filesCopied)
 
-		// Update tracking files
+		// Update commit tracking
 		os.WriteFile(commitFile, []byte(remoteCommit), 0644)
-		remoteVersion := readVersionFile(filepath.Join(tempDir, ".base-version"))
-		if remoteVersion != "" {
-			os.WriteFile(versionFile, []byte(remoteVersion), 0644)
-		}
 
 		// Run migrations from cloned repo
 		migrationsDir := filepath.Join(tempDir, manifest.Migrations.Path)
-		pendingMigrations := findPendingMigrations(migrationsDir, currentVersion)
+		pendingMigrations := findPendingMigrations(rootDir, migrationsDir)
 
 		if len(pendingMigrations) > 0 {
 			fmt.Printf("\n%sRunning migrations...%s\n", colorCyan, colorReset)
 			for _, m := range pendingMigrations {
-				fmt.Printf("  %s\n", filepath.Base(m))
+				name := filepath.Base(m)
+				fmt.Printf("  %s\n", name)
 				if err := runMigration(m, rootDir); err != nil {
 					fmt.Fprintf(os.Stderr, "%sMigration failed: %v%s\n", colorRed, err, colorReset)
 					os.Exit(1)
 				}
+				markMigrationApplied(rootDir, name)
 			}
 		}
 
 		fmt.Printf("\n%sDone!%s\n", colorGreen, colorReset)
-		fmt.Printf("Updated to version: %s\n", remoteVersion)
 		fmt.Printf("Commit: %s\n", remoteCommit[:8])
 
 		if isFreshInstall {
@@ -211,7 +205,7 @@ func runUpgrade(rootDir string, args []string) {
 			manifest = getDefaultManifest()
 		}
 		migrationsDir := filepath.Join(rootDir, manifest.Migrations.Path)
-		pendingMigrations := findPendingMigrations(migrationsDir, currentVersion)
+		pendingMigrations := findPendingMigrations(rootDir, migrationsDir)
 
 		if len(pendingMigrations) == 0 {
 			fmt.Printf("%sNo pending migrations.%s\n", colorGreen, colorReset)
@@ -229,11 +223,13 @@ func runUpgrade(rootDir string, args []string) {
 
 		fmt.Printf("\n%sRunning migrations...%s\n", colorCyan, colorReset)
 		for _, m := range pendingMigrations {
-			fmt.Printf("  %s\n", filepath.Base(m))
+			name := filepath.Base(m)
+			fmt.Printf("  %s\n", name)
 			if err := runMigration(m, rootDir); err != nil {
 				fmt.Fprintf(os.Stderr, "%sMigration failed: %v%s\n", colorRed, err, colorReset)
 				os.Exit(1)
 			}
+			markMigrationApplied(rootDir, name)
 		}
 		fmt.Printf("\n%sDone!%s\n", colorGreen, colorReset)
 	}
@@ -396,10 +392,6 @@ func readFile(path string) string {
 	return strings.TrimSpace(string(data))
 }
 
-func readVersionFile(path string) string {
-	return readFile(path)
-}
-
 func loadManifest(path string) (*Manifest, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -427,8 +419,29 @@ func getDefaultManifest() *Manifest {
 	}
 }
 
-func findPendingMigrations(dir string, currentVersion string) []string {
-	files, err := filepath.Glob(filepath.Join(dir, "*.sh"))
+// Migration tracking using .applied files
+func getMigrationsDir(rootDir string) string {
+	return filepath.Join(rootDir, ".base-migrations")
+}
+
+func isMigrationApplied(rootDir, migrationName string) bool {
+	appliedFile := filepath.Join(getMigrationsDir(rootDir), migrationName+".applied")
+	_, err := os.Stat(appliedFile)
+	return err == nil
+}
+
+func markMigrationApplied(rootDir, migrationName string) error {
+	dir := getMigrationsDir(rootDir)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	appliedFile := filepath.Join(dir, migrationName+".applied")
+	content := fmt.Sprintf("applied: %s\n", time.Now().Format(time.RFC3339))
+	return os.WriteFile(appliedFile, []byte(content), 0644)
+}
+
+func findPendingMigrations(rootDir, migrationsDir string) []string {
+	files, err := filepath.Glob(filepath.Join(migrationsDir, "*.sh"))
 	if err != nil || len(files) == 0 {
 		return nil
 	}
@@ -437,9 +450,8 @@ func findPendingMigrations(dir string, currentVersion string) []string {
 
 	var pending []string
 	for _, f := range files {
-		base := filepath.Base(f)
-		migrationVersion := strings.Split(base, "_")[0]
-		if migrationVersion > currentVersion {
+		name := filepath.Base(f)
+		if !isMigrationApplied(rootDir, name) {
 			pending = append(pending, f)
 		}
 	}

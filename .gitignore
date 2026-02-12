@@ -39,3 +39,6 @@ apps/frontend/.turbo/
 # Logs
 *.log
 logs/
+
+# Base template migrations
+.base-migrations/
