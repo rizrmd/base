@@ -1,14 +1,15 @@
 package main
 
 import (
-	"context"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
 	"syscall"
+	"time"
 )
 
 var (
@@ -22,18 +23,30 @@ type Config struct {
 	EncorePort   int
 }
 
-func getConfig() *Config {
-	// Generate unique port offset based on user's UID
-	// This allows multiple users to run on the same machine without conflicts
+// getPortOffset returns a unique offset based on user identity + project path
+func getPortOffset(rootDir string) int {
+	h := fnv.New32a()
+
 	uid := os.Getuid()
-	portOffset := uid % 1000 // Offset between 0-999
+	if uid == -1 {
+		h.Write([]byte(os.Getenv("USERNAME")))
+	} else {
+		h.Write([]byte(strconv.Itoa(uid)))
+	}
+
+	h.Write([]byte(rootDir))
+
+	return int(h.Sum32() % 1000)
+}
+
+func getConfig(rootDir string) *Config {
+	portOffset := getPortOffset(rootDir)
 
 	cfg := &Config{
 		FrontendPort: 5173 + portOffset,
 		EncorePort:   4000 + portOffset,
 	}
 
-	// Allow manual override via environment variables
 	if port := os.Getenv("FRONTEND_PORT"); port != "" {
 		if p, err := strconv.Atoi(port); err == nil {
 			cfg.FrontendPort = p
@@ -49,7 +62,6 @@ func getConfig() *Config {
 }
 
 func main() {
-	// Get the directory where the binary is located
 	exePath, err := os.Executable()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error getting executable path: %v\n", err)
@@ -60,18 +72,13 @@ func main() {
 	appsDir := filepath.Join(rootDir, "apps")
 	frontendDir := filepath.Join(appsDir, "frontend")
 
-	// Verify apps directory exists
 	if _, err := os.Stat(appsDir); os.IsNotExist(err) {
 		fmt.Fprintf(os.Stderr, "Error: apps directory not found at %s\n", appsDir)
 		os.Exit(1)
 	}
 
-	cfg := getConfig()
+	cfg := getConfig(rootDir)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Handle shutdown signals
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
@@ -81,25 +88,29 @@ func main() {
 	if env == "prod" {
 		fmt.Printf("Building %s frontend app...\n", name)
 
-		// Build frontend app first
-		if err := buildFrontendApp(ctx, frontendDir); err != nil {
+		if err := buildFrontendApp(frontendDir); err != nil {
 			fmt.Fprintf(os.Stderr, "Error building frontend app: %v\n", err)
 			os.Exit(1)
 		}
 
 		fmt.Printf("Starting %s in production mode (port %d)...\n", name, cfg.EncorePort)
-		encoreCmd = exec.CommandContext(ctx, "encore", "run", "--env", "production", "--port", strconv.Itoa(cfg.EncorePort))
+		encoreCmd = exec.Command("encore", "run", "--env", "production",
+			"--port", strconv.Itoa(cfg.EncorePort),
+			"--browser=never",
+		)
 	} else {
-		fmt.Printf("Starting %s in development mode (frontend: %d, encore: %d)...\n", name, cfg.FrontendPort, cfg.EncorePort)
+		fmt.Printf("Starting %s in development mode:\n", name)
+		fmt.Printf("  Frontend: http://localhost:%d\n", cfg.FrontendPort)
+		fmt.Printf("  API:      http://localhost:%d\n", cfg.EncorePort)
 
-		// Start frontend dev server in background
-		frontendCmd = startFrontendDevServer(ctx, frontendDir, cfg.FrontendPort)
+		frontendCmd = startFrontendDevServer(frontendDir, cfg.FrontendPort, cfg.EncorePort)
 
-		// Start Encore
-		encoreCmd = exec.CommandContext(ctx, "encore", "run", "--port", strconv.Itoa(cfg.EncorePort))
+		encoreCmd = exec.Command("encore", "run",
+			"--port", strconv.Itoa(cfg.EncorePort),
+			"--browser=never",
+		)
 	}
 
-	// Pass port config to Encore subprocess
 	encoreCmd.Env = append(os.Environ(),
 		fmt.Sprintf("FRONTEND_PORT=%d", cfg.FrontendPort),
 		fmt.Sprintf("ENCORE_PORT=%d", cfg.EncorePort),
@@ -110,43 +121,31 @@ func main() {
 	encoreCmd.Stderr = os.Stderr
 	encoreCmd.Stdin = os.Stdin
 
-	// Start Encore
+	// Set platform-specific process attributes
+	setProcessGroup(encoreCmd)
+
 	if err := encoreCmd.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error starting encore: %v\n", err)
-		cancel()
+		killProcess(frontendCmd)
 		os.Exit(1)
 	}
 
-	// Wait for shutdown signal
 	<-sigChan
 	fmt.Println("\nShutting down...")
 
-	cancel()
+	killProcess(frontendCmd)
+	killProcess(encoreCmd)
 
-	// Cleanup processes
-	if frontendCmd != nil && frontendCmd.Process != nil {
-		frontendCmd.Process.Signal(syscall.SIGTERM)
-	}
-	if encoreCmd.Process != nil {
-		encoreCmd.Process.Signal(syscall.SIGTERM)
-	}
-
-	// Wait for processes to exit
-	if frontendCmd != nil {
-		frontendCmd.Wait()
-	}
-	encoreCmd.Wait()
+	time.Sleep(500 * time.Millisecond)
 }
 
-func buildFrontendApp(ctx context.Context, frontendDir string) error {
-	// Check if frontend directory exists
+func buildFrontendApp(frontendDir string) error {
 	if _, err := os.Stat(frontendDir); os.IsNotExist(err) {
 		return fmt.Errorf("frontend directory not found at %s", frontendDir)
 	}
 
-	// Install dependencies if needed
 	if _, err := os.Stat(filepath.Join(frontendDir, "node_modules")); os.IsNotExist(err) {
-		installCmd := exec.CommandContext(ctx, "npm", "install")
+		installCmd := exec.Command("npm", "install")
 		installCmd.Dir = frontendDir
 		installCmd.Stdout = os.Stdout
 		installCmd.Stderr = os.Stderr
@@ -155,8 +154,7 @@ func buildFrontendApp(ctx context.Context, frontendDir string) error {
 		}
 	}
 
-	// Build the frontend app
-	buildCmd := exec.CommandContext(ctx, "npm", "run", "build")
+	buildCmd := exec.Command("npm", "run", "build")
 	buildCmd.Dir = frontendDir
 	buildCmd.Stdout = os.Stdout
 	buildCmd.Stderr = os.Stderr
@@ -167,11 +165,18 @@ func buildFrontendApp(ctx context.Context, frontendDir string) error {
 	return nil
 }
 
-func startFrontendDevServer(ctx context.Context, frontendDir string, port int) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, "npm", "run", "dev", "--", "--port", strconv.Itoa(port))
+func startFrontendDevServer(frontendDir string, port int, encorePort int) *exec.Cmd {
+	cmd := exec.Command("npm", "run", "dev", "--", "--port", strconv.Itoa(port))
 	cmd.Dir = frontendDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+
+	// Pass ENCORE_PORT for Vite HMR configuration
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("ENCORE_PORT=%d", encorePort),
+	)
+
+	setProcessGroup(cmd)
 
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to start frontend dev server: %v\n", err)

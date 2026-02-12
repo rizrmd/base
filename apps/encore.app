@@ -1,6 +1,3 @@
 {
-  "id": "",
-  "run": {
-    "browser":"never"
-  }
+  "id": ""
 }

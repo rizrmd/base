@@ -71,14 +71,18 @@ Running the app:
 ./prod.linux    # On Linux (production mode)
 
 Multi-user support (shared machine):
-Ports are automatically unique per user based on UID (offset = UID % 1000).
-No configuration needed - just run:
+Ports are automatically unique per user AND per project. No configuration needed:
 
-./dev.macos    # Each user gets unique ports automatically
+./dev.macos    # Each user + project combination gets unique ports
 
 Port calculation:
-- Frontend: 5173 + (UID % 1000)
-- Encore:   4000 + (UID % 1000)
+hash(user_identity + project_path) % 1000
+
+Services:
+- Frontend: 5173 + offset
+- API:      4000 + offset
+
+Note: Encore's Dashboard (9400) and MCP (9900) ports are not configurable.
 
 Manual override (optional):
 FRONTEND_PORT=5174 ENCORE_PORT=4001 ./dev.macos

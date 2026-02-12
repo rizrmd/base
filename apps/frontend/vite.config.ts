@@ -5,4 +5,14 @@ import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
   plugins: [tailwindcss(), reactRouter(), tsconfigPaths()],
+  clearScreen: false,
+  server: {
+    // Configure HMR to use Encore's port when accessed through proxy
+    hmr: process.env.ENCORE_PORT
+      ? {
+          clientPort: parseInt(process.env.ENCORE_PORT, 10),
+          host: "localhost",
+        }
+      : true,
+  },
 });
