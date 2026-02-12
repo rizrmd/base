@@ -13,8 +13,9 @@ import (
 )
 
 var (
-	env  = "dev" // overridden at build time via ldflags
-	name = ""
+	env     = "dev" // overridden at build time via ldflags
+	version = "1.0.0"
+	name    = ""
 )
 
 // Config holds runtime configuration
@@ -69,6 +70,43 @@ func main() {
 	}
 
 	rootDir := filepath.Dir(exePath)
+
+	// Parse subcommand
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "upgrade":
+			runUpgrade(rootDir, os.Args[2:])
+			return
+		case "version", "-v", "--version":
+			fmt.Printf("%s version %s (env: %s)\n", name, version, env)
+			return
+		case "help", "-h", "--help":
+			printHelp()
+			return
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", os.Args[1])
+			printHelp()
+			os.Exit(1)
+		}
+	}
+
+	// Default: run the app
+	runApp(rootDir)
+}
+
+func printHelp() {
+	fmt.Printf("Usage: %s [command]\n\n", filepath.Base(os.Args[0]))
+	fmt.Println("Commands:")
+	fmt.Println("  (none)    Start the application (default)")
+	fmt.Println("  upgrade   Upgrade base template to latest version")
+	fmt.Println("  version   Show version information")
+	fmt.Println("  help      Show this help message")
+	fmt.Println("")
+	fmt.Println("Options:")
+	fmt.Println("  --dry-run    Preview upgrade changes without applying")
+}
+
+func runApp(rootDir string) {
 	appsDir := filepath.Join(rootDir, "apps")
 	frontendDir := filepath.Join(appsDir, "frontend")
 

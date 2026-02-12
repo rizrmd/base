@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "description": "Base template manifest - defines what files are upgraded vs preserved",
+
+  "source": {
+    "repo": "https://github.com/rizrmd/base",
+    "branch": "main"
+  },
+
+  "base": {
+    "description": "Files that are always overwritten during upgrade",
+    "files": [
+      "apps/start/**",
+      "apps/backend/spa/**",
+      "apps/encore.app",
+      "apps/go.mod",
+      "apps/go.sum",
+      "dev.linux",
+      "dev.macos",
+      "dev.exe",
+      "prod.linux"
+    ],
+    "exclude": [
+      "apps/start/base.manifest",
+      "apps/start/migrations/**"
+    ]
+  },
+
+  "user": {
+    "description": "Files that are always preserved (never touched by upgrade)",
+    "files": [
+      "apps/backend/**/*.go",
+      "apps/backend/**/migrations/**",
+      "apps/frontend/app/**",
+      "apps/frontend/public/**",
+      "apps/frontend/.env*",
+      ".env*",
+      "*.local.*"
+    ],
+    "exclude": [
+      "apps/backend/spa/**"
+    ]
+  },
+
+  "merge": {
+    "description": "Files that may need manual merge - upgrade will prompt",
+    "files": [
+      "apps/frontend/package.json",
+      "apps/frontend/vite.config.ts",
+      "apps/frontend/tsconfig.json",
+      "apps/frontend/react-router.config.ts"
+    ],
+    "strategy": "prompt"
+  },
+
+  "migrations": {
+    "description": "Migration scripts to transform user code between versions",
+    "path": "apps/start/migrations",
+    "naming": "{version}_{description}.sh"
+  }
+}
