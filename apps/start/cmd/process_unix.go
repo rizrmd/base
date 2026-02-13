@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -72,9 +73,17 @@ func killProcessOnPort(port int) error {
 		return nil
 	}
 
+	// Get our own PID to avoid killing ourselves
+	ourPID := os.Getpid()
+
 	for _, pidStr := range pidStrings {
 		pid, err := strconv.Atoi(pidStr)
 		if err != nil {
+			continue
+		}
+
+		// Skip our own process
+		if pid == ourPID {
 			continue
 		}
 
