@@ -209,6 +209,19 @@ func buildFrontendApp(frontendDir string) error {
 }
 
 func startFrontendDevServer(frontendDir string, port int, encorePort int) *exec.Cmd {
+	// Install dependencies if node_modules doesn't exist
+	if _, err := os.Stat(filepath.Join(frontendDir, "node_modules")); os.IsNotExist(err) {
+		fmt.Println("Installing frontend dependencies...")
+		installCmd := exec.Command("bun", "install")
+		installCmd.Dir = frontendDir
+		installCmd.Stdout = os.Stdout
+		installCmd.Stderr = os.Stderr
+		if err := installCmd.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: bun install failed: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
 	cmd := exec.Command("bun", "run", "dev", "--port", strconv.Itoa(port))
 	cmd.Dir = frontendDir
 	cmd.Stdout = os.Stdout
