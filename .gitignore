@@ -6,6 +6,7 @@
 # IDE
 .idea/
 .vscode/
+!.vscode/settings.json
 *.swp
 *.swo
 
@@ -31,7 +32,12 @@ apps/frontend/.turbo/
 
 # Environment & secrets
 .env
-.env.*
+.env.local
+.env.*.local
+.env.production
+.env.development
+.env.test
+!.env.example
 .secrets.local.cue
 *.pem
 *.key

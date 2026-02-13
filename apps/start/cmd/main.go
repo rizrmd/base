@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"hash/fnv"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -106,6 +108,79 @@ func printHelp() {
 	fmt.Println("  --dry-run    Preview upgrade changes without applying")
 }
 
+// loadEnvFile reads and parses the .env file at the given path
+// Returns a map of environment variables, or nil if the file doesn't exist
+func loadEnvFile(envPath string) map[string]string {
+	if _, err := os.Stat(envPath); os.IsNotExist(err) {
+		return nil
+	}
+
+	f, err := os.Open(envPath)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	envMap := make(map[string]string)
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+
+		// Skip empty lines and comments
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Parse KEY=VALUE format
+		if idx := strings.Index(line, "="); idx > 0 {
+			key := strings.TrimSpace(line[:idx])
+			value := strings.TrimSpace(line[idx+1:])
+
+			// Remove quotes if present
+			if len(value) >= 2 && (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
+				value = value[1 : len(value)-1]
+			}
+
+			envMap[key] = value
+		}
+	}
+
+	if len(envMap) > 0 {
+		fmt.Printf("Loaded %d environment variables from %s\n", len(envMap), envPath)
+	}
+
+	return envMap
+}
+
+// mergeEnv merges existing environment variables with .env file variables
+// .env variables take precedence over existing ones
+func mergeEnv(envVars []string, envFile map[string]string) []string {
+	if envFile == nil {
+		return envVars
+	}
+
+	// Create a map from existing environment
+	existing := make(map[string]string)
+	for _, envVar := range envVars {
+		if idx := strings.Index(envVar, "="); idx > 0 {
+			existing[envVar[:idx]] = envVar[idx+1:]
+		}
+	}
+
+	// Merge with .env (overriding existing values)
+	for key, value := range envFile {
+		existing[key] = value
+	}
+
+	// Convert back to slice
+	result := make([]string, 0, len(existing))
+	for key, value := range existing {
+		result = append(result, fmt.Sprintf("%s=%s", key, value))
+	}
+
+	return result
+}
+
 func runApp(rootDir string) {
 	appsDir := filepath.Join(rootDir, "apps")
 	frontendDir := filepath.Join(appsDir, "frontend")
@@ -116,6 +191,9 @@ func runApp(rootDir string) {
 	}
 
 	cfg := getConfig(rootDir)
+
+	// Load root .env file if it exists
+	envFile := loadEnvFile(filepath.Join(rootDir, ".env"))
 
 	// Kill any processes using our ports before starting
 	if err := killProcessesOnPorts(cfg.FrontendPort, cfg.EncorePort); err != nil {
@@ -131,7 +209,7 @@ func runApp(rootDir string) {
 	if env == "prod" {
 		fmt.Printf("Building %s frontend app...\n", name)
 
-		if err := buildFrontendApp(frontendDir); err != nil {
+		if err := buildFrontendApp(frontendDir, envFile); err != nil {
 			fmt.Fprintf(os.Stderr, "Error building frontend app: %v\n", err)
 			os.Exit(1)
 		}
@@ -146,7 +224,7 @@ func runApp(rootDir string) {
 		fmt.Printf("  Frontend: http://localhost:%d\n", cfg.FrontendPort)
 		fmt.Printf("  API:      http://localhost:%d\n", cfg.EncorePort)
 
-		frontendCmd = startFrontendDevServer(frontendDir, cfg.FrontendPort, cfg.EncorePort)
+		frontendCmd = startFrontendDevServer(frontendDir, cfg.FrontendPort, cfg.EncorePort, envFile)
 
 		encoreCmd = exec.Command("encore", "run",
 			"--port", strconv.Itoa(cfg.EncorePort),
@@ -154,7 +232,8 @@ func runApp(rootDir string) {
 		)
 	}
 
-	encoreCmd.Env = append(os.Environ(),
+	encoreCmd.Env = mergeEnv(os.Environ(), envFile)
+	encoreCmd.Env = append(encoreCmd.Env,
 		fmt.Sprintf("FRONTEND_PORT=%d", cfg.FrontendPort),
 		fmt.Sprintf("ENCORE_PORT=%d", cfg.EncorePort),
 	)
@@ -182,7 +261,7 @@ func runApp(rootDir string) {
 	time.Sleep(500 * time.Millisecond)
 }
 
-func buildFrontendApp(frontendDir string) error {
+func buildFrontendApp(frontendDir string, envFile map[string]string) error {
 	if _, err := os.Stat(frontendDir); os.IsNotExist(err) {
 		return fmt.Errorf("frontend directory not found at %s", frontendDir)
 	}
@@ -190,6 +269,7 @@ func buildFrontendApp(frontendDir string) error {
 	if _, err := os.Stat(filepath.Join(frontendDir, "node_modules")); os.IsNotExist(err) {
 		installCmd := exec.Command("bun", "install")
 		installCmd.Dir = frontendDir
+		installCmd.Env = mergeEnv(os.Environ(), envFile)
 		installCmd.Stdout = os.Stdout
 		installCmd.Stderr = os.Stderr
 		if err := installCmd.Run(); err != nil {
@@ -199,6 +279,7 @@ func buildFrontendApp(frontendDir string) error {
 
 	buildCmd := exec.Command("bun", "run", "build")
 	buildCmd.Dir = frontendDir
+	buildCmd.Env = mergeEnv(os.Environ(), envFile)
 	buildCmd.Stdout = os.Stdout
 	buildCmd.Stderr = os.Stderr
 	if err := buildCmd.Run(); err != nil {
@@ -208,12 +289,13 @@ func buildFrontendApp(frontendDir string) error {
 	return nil
 }
 
-func startFrontendDevServer(frontendDir string, port int, encorePort int) *exec.Cmd {
+func startFrontendDevServer(frontendDir string, port int, encorePort int, envFile map[string]string) *exec.Cmd {
 	// Install dependencies if node_modules doesn't exist
 	if _, err := os.Stat(filepath.Join(frontendDir, "node_modules")); os.IsNotExist(err) {
 		fmt.Println("Installing frontend dependencies...")
 		installCmd := exec.Command("bun", "install")
 		installCmd.Dir = frontendDir
+		installCmd.Env = mergeEnv(os.Environ(), envFile)
 		installCmd.Stdout = os.Stdout
 		installCmd.Stderr = os.Stderr
 		if err := installCmd.Run(); err != nil {
@@ -227,10 +309,9 @@ func startFrontendDevServer(frontendDir string, port int, encorePort int) *exec.
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	// Pass ENCORE_PORT for Vite HMR configuration
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("ENCORE_PORT=%d", encorePort),
-	)
+	// Merge .env variables with current environment
+	cmd.Env = mergeEnv(os.Environ(), envFile)
+	cmd.Env = append(cmd.Env, fmt.Sprintf("ENCORE_PORT=%d", encorePort))
 
 	setProcessGroup(cmd)
 

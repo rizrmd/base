@@ -835,6 +835,9 @@ Configure in encore.app file:
 - expose_headers: Additional exposed headers
 - allow_origins_without_credentials: Defaults to ["*"]
 - allow_origins_with_credentials: For authenticated requests, supports wildcards like "https://*.example.com"
+
+**IMPORTANT: Avoid setting the `id` field in encore.app**
+Setting `id: "encore.app"` (or any app ID) forces the use of Encore's cloud services. This project does NOT use Encore cloud - we deploy using Docker with our own infrastructure. Never set an app ID in encore.app, as it will incorrectly link the project to Encore's managed services.
 </cors>
 
 <metadata>
@@ -1384,5 +1387,39 @@ func (s *Service) GetItems(ctx context.Context) ([]Item, error) {
 // CREATE POLICY tenant_isolation ON items
 //     USING (tenant_id = current_setting('app.current_tenant')::text);
 </multi_tenancy>
+
+<deployment>
+This project uses Docker for deployment with our own infrastructure, not Encore's cloud services.
+
+**Docker Guidelines:**
+- Use **Dockerfile** only - never create docker-compose.yml files
+- Build single container images that include the compiled Encore binary
+- Deploy directly to your own servers, Kubernetes, or container orchestration
+- Do not use Encore's managed deployment or cloud platform
+
+**Example Dockerfile:**
+```dockerfile
+# Build stage
+FROM golang:1.22-alpine AS builder
+WORKDIR /app
+COPY apps/ .
+RUN go build -o main ./backend/cmd/your-entrypoint
+
+# Runtime stage
+FROM alpine:latest
+WORKDIR /app
+COPY --from=builder /app/main .
+EXPOSE 4000
+CMD ["./main"]
+```
+
+**Never create:**
+- docker-compose.yml
+- docker-compose.prod.yml
+- docker-compose.dev.yml
+- Any Docker Compose configuration files
+
+This project runs Encore apps directly using the compiled binaries (dev.macos, dev.linux, prod.linux), and deployment is handled via individual Dockerfile builds.
+</deployment>
 
 </encore_go_domain_knowledge>
