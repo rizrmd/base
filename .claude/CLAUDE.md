@@ -33,7 +33,7 @@ This project uses a custom structure with pre-built start binaries in the root f
     backend/             # Backend system
       spa/               # SPA service - proxies dev server or serves static files
         spa.go
-    frontend/            # React Router frontend app
+    frontend/            # React Router frontend app (uses Bun package manager)
       package.json
       app/
       build/             # Production build output
@@ -51,11 +51,11 @@ Start binaries:
 - Environment (dev/prod) is embedded at build time via ldflags
 
 Development mode (dev.*):
-1. Starts frontend dev server (npm run dev on port 5173)
+1. Starts frontend dev server (bun run dev on port 5173)
 2. Starts Encore (which proxies to frontend dev server via backend/spa)
 
 Production mode (prod.linux):
-1. Builds frontend app (npm run build)
+1. Builds frontend app (bun run build)
 2. Starts Encore (which serves static files from frontend/build/client via backend/spa)
 
 Building binaries:
@@ -87,6 +87,25 @@ Note: Encore's Dashboard (9400) and MCP (9900) ports are not configurable.
 Manual override (optional):
 FRONTEND_PORT=5174 ENCORE_PORT=4001 ./dev.macos
 </project_structure>
+
+<frontend_package_management>
+Frontend uses Bun as the package manager for fast dependency installation and running.
+
+Install dependencies (run from apps/frontend/):
+bun install
+
+Development:
+bun run dev        # Start dev server
+
+Production:
+bun run build      # Build for production
+
+Common commands (run from apps/frontend/):
+bun run test       # Run tests
+bun run lint       # Run linter
+bun add <package>  # Add a new dependency
+bun add -d <pkg>   # Add a dev dependency
+</frontend_package_management>
 
 <api_definition>
 Create type-safe APIs from regular Go functions using //encore:api annotation.
@@ -186,7 +205,7 @@ err := tododb.QueryRow(ctx, `
 `).Scan(&item.ID, &item.Title, &item.Done)
 // Use errors.Is(err, sqldb.ErrNoRows) for no results
 
-CLI commands:
+CLI commands (run from apps/ directory):
 - encore db shell database-name [--env=name] - Opens psql shell
 - encore db conn-uri database-name [--env=name] - Outputs connection string
 - encore db proxy [--env=name] - Sets up local connection proxy
@@ -374,7 +393,7 @@ func callGitHub(ctx context.Context) {
     req.Header.Add("Authorization", "token " + secrets.GitHubAPIToken)
 }
 
-CLI management:
+CLI management (run from apps/ directory):
 - encore secret set --type production secret-name
 - encore secret set --type development secret-name
 - encore secret set --env env-name secret-name (environment-specific override)
@@ -616,7 +635,7 @@ et.MockService[products.Interface]("products", &myMockObject{})
 </mocking>
 
 <testing>
-Run tests with: encore test ./...
+Run tests with: encore test ./... (run from apps/ directory)
 Supports all standard go test flags. Built-in tracing at localhost:9400.
 
 When to Write Tests:
@@ -730,7 +749,7 @@ func TestTodoService_Create(t *testing.T) {
     }
 }
 
-Running Tests:
+Running Tests (from apps/ directory):
 - Single package: encore test ./path/to/service
 - All tests: encore test ./...
 - With race detection: encore test -race ./...
@@ -801,7 +820,7 @@ func (s *Service) AuthHandler(ctx context.Context, token string) (auth.UID, *Use
     // Token verification and user data retrieval
 }
 
-Set secrets:
+Set secrets (from apps/ directory):
 - encore secret set --prod ClientSecretKey
 - encore secret set --dev ClientSecretKey
 </clerk_auth>
