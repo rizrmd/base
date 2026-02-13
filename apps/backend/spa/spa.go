@@ -2,7 +2,6 @@ package spa
 
 import (
 	"context"
-	"hash/fnv"
 	"io/fs"
 	"net/http"
 	"net/http/httputil"
@@ -73,30 +72,6 @@ func initService() (*Service, error) {
 	return s, nil
 }
 
-// getPortOffset returns a unique offset based on user identity + project path
-// This ensures different projects by the same user get different ports
-func getPortOffset() int {
-	h := fnv.New32a()
-
-	// Include user identity
-	uid := os.Getuid()
-	if uid == -1 {
-		// Windows: hash the username
-		h.Write([]byte(os.Getenv("USERNAME")))
-	} else {
-		// Unix: hash the UID
-		h.Write([]byte(strconv.Itoa(uid)))
-	}
-
-	// Include project path for uniqueness across projects
-	// Encore runs from apps/ directory, so get parent (project root)
-	if cwd, err := os.Getwd(); err == nil {
-		h.Write([]byte(cwd))
-	}
-
-	return int(h.Sum32() % 1000)
-}
-
 func getFrontendPort() int {
 	// Check environment variable first (set by start binary)
 	if port := os.Getenv("FRONTEND_PORT"); port != "" {
@@ -105,8 +80,8 @@ func getFrontendPort() int {
 		}
 	}
 
-	// Fallback: calculate from user identity (same logic as start binary)
-	return 5173 + getPortOffset()
+	// Fallback: default local frontend dev server port
+	return 5390
 }
 
 // Serve handles all SPA routes.

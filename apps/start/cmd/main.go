@@ -188,28 +188,28 @@ func buildFrontendApp(frontendDir string) error {
 	}
 
 	if _, err := os.Stat(filepath.Join(frontendDir, "node_modules")); os.IsNotExist(err) {
-		installCmd := exec.Command("npm", "install")
+		installCmd := exec.Command("bun", "install")
 		installCmd.Dir = frontendDir
 		installCmd.Stdout = os.Stdout
 		installCmd.Stderr = os.Stderr
 		if err := installCmd.Run(); err != nil {
-			return fmt.Errorf("npm install failed: %w", err)
+			return fmt.Errorf("bun install failed: %w", err)
 		}
 	}
 
-	buildCmd := exec.Command("npm", "run", "build")
+	buildCmd := exec.Command("bun", "run", "build")
 	buildCmd.Dir = frontendDir
 	buildCmd.Stdout = os.Stdout
 	buildCmd.Stderr = os.Stderr
 	if err := buildCmd.Run(); err != nil {
-		return fmt.Errorf("npm build failed: %w", err)
+		return fmt.Errorf("bun build failed: %w", err)
 	}
 
 	return nil
 }
 
 func startFrontendDevServer(frontendDir string, port int, encorePort int) *exec.Cmd {
-	cmd := exec.Command("npm", "run", "dev", "--", "--port", strconv.Itoa(port))
+	cmd := exec.Command("bun", "run", "dev", "--port", strconv.Itoa(port))
 	cmd.Dir = frontendDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

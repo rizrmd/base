@@ -7,6 +7,8 @@ export default defineConfig({
   plugins: [tailwindcss(), reactRouter(), tsconfigPaths()],
   clearScreen: false,
   server: {
+    port: parseInt(process.env.FRONTEND_PORT || "5390", 10),
+    strictPort: true,
     // Configure HMR to use Encore's port when accessed through proxy
     hmr: process.env.ENCORE_PORT
       ? {

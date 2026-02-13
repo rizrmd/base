@@ -195,7 +195,7 @@ func runUpgrade(rootDir string, args []string) {
 
 		if isFreshInstall {
 			fmt.Println("\nNext steps:")
-			fmt.Println("  1. cd apps/frontend && npm install")
+			fmt.Println("  1. cd apps/frontend && bun install")
 			fmt.Println("  2. ./dev.macos  # Start development")
 		}
 	} else {
