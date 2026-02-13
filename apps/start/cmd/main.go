@@ -117,6 +117,11 @@ func runApp(rootDir string) {
 
 	cfg := getConfig(rootDir)
 
+	// Kill any processes using our ports before starting
+	if err := killProcessesOnPorts(cfg.FrontendPort, cfg.EncorePort); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Failed to kill existing processes: %v\n", err)
+	}
+
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
