@@ -1,3 +1,6 @@
 {
-  "id": ""
+  "id": "",
+  "metadata": {
+    "name": "base"
+  }
 }

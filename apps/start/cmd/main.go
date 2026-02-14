@@ -499,7 +499,12 @@ func buildFrontendApp(frontendDir string, envFile map[string]string) error {
 
 	ctx := context.Background()
 
-	if _, err := os.Stat(filepath.Join(frontendDir, "node_modules")); os.IsNotExist(err) {
+	depsOk, err := checkFrontendDependencies(frontendDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Failed to check frontend dependencies: %v\n", err)
+	}
+
+	if !depsOk {
 		fmt.Println("Installing frontend dependencies...")
 		session, err := ptyx.Spawn(ctx, ptyx.SpawnOpts{
 			Prog: "bun",
@@ -540,7 +545,12 @@ func buildFrontendApp(frontendDir string, envFile map[string]string) error {
 
 func startFrontendDevServerWithPTY(ctx context.Context, frontendDir string, port int, encorePort int, envFile map[string]string) (*exec.Cmd, ptyx.Session, error) {
 	// Install dependencies if node_modules doesn't exist
-	if _, err := os.Stat(filepath.Join(frontendDir, "node_modules")); os.IsNotExist(err) {
+	depsOk, err := checkFrontendDependencies(frontendDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Failed to check frontend dependencies: %v\n", err)
+	}
+
+	if !depsOk {
 		fmt.Println("Installing frontend dependencies...")
 		session, err := ptyx.Spawn(ctx, ptyx.SpawnOpts{
 			Prog: "bun",
@@ -592,4 +602,43 @@ func startFrontendDevServerWithPTY(ctx context.Context, frontendDir string, port
 		fmt.Printf("✓ Frontend dev server started on port %d (PID: %d)\n", port, session.Pid())
 		return nil, session, nil
 	}
+}
+
+// checkFrontendDependencies checks if all dependencies in package.json are present in node_modules
+func checkFrontendDependencies(frontendDir string) (bool, error) {
+	// Check if node_modules exists
+	if _, err := os.Stat(filepath.Join(frontendDir, "node_modules")); os.IsNotExist(err) {
+		return false, nil
+	}
+
+	// Read package.json
+	packageJSONPath := filepath.Join(frontendDir, "package.json")
+	data, err := os.ReadFile(packageJSONPath)
+	if err != nil {
+		return false, fmt.Errorf("failed to read package.json: %w", err)
+	}
+
+	var pkg struct {
+		Dependencies    map[string]string `json:"dependencies"`
+		DevDependencies map[string]string `json:"devDependencies"`
+	}
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return false, fmt.Errorf("failed to parse package.json: %w", err)
+	}
+
+	// Check dependencies
+	for dep := range pkg.Dependencies {
+		if _, err := os.Stat(filepath.Join(frontendDir, "node_modules", dep)); os.IsNotExist(err) {
+			return false, nil
+		}
+	}
+
+	// Check devDependencies
+	for dep := range pkg.DevDependencies {
+		if _, err := os.Stat(filepath.Join(frontendDir, "node_modules", dep)); os.IsNotExist(err) {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
