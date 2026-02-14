@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -151,6 +152,84 @@ func getConfig(rootDir string) *Config {
 	return cfg
 }
 
+// ensureEncoreAppConfig validates and ensures encore.app has proper configuration:
+// - id field is empty (no Encore Cloud app ID)
+// - metadata.name matches root folder name
+func ensureEncoreAppConfig(rootDir string) error {
+	encoreAppPath := filepath.Join(rootDir, "apps", "encore.app")
+
+	// Get root folder name
+	rootFolder := filepath.Base(rootDir)
+
+	// Read existing config
+	data, err := os.ReadFile(encoreAppPath)
+	if err != nil {
+		// File doesn't exist, create it
+		config := map[string]any{
+			"id": "",
+			"metadata": map[string]string{
+				"name": rootFolder,
+			},
+		}
+		return writeEncoreAppConfig(encoreAppPath, config)
+	}
+
+	// Parse existing config
+	var config map[string]any
+	if err := json.Unmarshal(data, &config); err != nil {
+		// Invalid JSON, rewrite with correct values
+		config := map[string]any{
+			"id": "",
+			"metadata": map[string]string{
+				"name": rootFolder,
+			},
+		}
+		return writeEncoreAppConfig(encoreAppPath, config)
+	}
+
+	// Ensure id is empty
+	needsUpdate := false
+	if id, ok := config["id"]; !ok || id != "" {
+		config["id"] = ""
+		needsUpdate = true
+	}
+
+	// Ensure metadata exists with correct name
+	metadata, ok := config["metadata"].(map[string]any)
+	if !ok {
+		metadata = make(map[string]any)
+		config["metadata"] = metadata
+		needsUpdate = true
+	}
+	if metadata["name"] != rootFolder {
+		metadata["name"] = rootFolder
+		needsUpdate = true
+	}
+
+	if needsUpdate {
+		return writeEncoreAppConfig(encoreAppPath, config)
+	}
+
+	return nil
+}
+
+// writeEncoreAppConfig writes the encore.app configuration to disk
+func writeEncoreAppConfig(path string, config map[string]any) error {
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+	data = append(data, '\n')
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+
+	rootFolder := config["metadata"].(map[string]any)["name"]
+	fmt.Printf("✓ Updated encore.app: id=%q, metadata.name=%q\n", config["id"], rootFolder)
+	return nil
+}
+
 func main() {
 	exePath, err := os.Executable()
 	if err != nil {
@@ -159,6 +238,11 @@ func main() {
 	}
 
 	rootDir := filepath.Dir(exePath)
+
+	// Ensure encore.app has proper configuration
+	if err := ensureEncoreAppConfig(rootDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Failed to validate encore.app: %v\n", err)
+	}
 
 	// Parse subcommand
 	if len(os.Args) > 1 {

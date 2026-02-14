@@ -252,6 +252,8 @@ func printUpgradeHelp() {
 	fmt.Println("  2. Set up the project structure")
 	fmt.Println("  3. Run any pending migrations")
 	fmt.Println("")
+	fmt.Println("Important: Migrations must not modify apps/backend or apps/frontend")
+	fmt.Println("")
 	fmt.Println("Options:")
 	fmt.Println("  --dry-run       Preview changes without applying")
 	fmt.Println("  --skip-fetch    Run local migrations only (no remote check)")
@@ -460,11 +462,43 @@ func findPendingMigrations(rootDir, migrationsDir string) []string {
 }
 
 func runMigration(path string, rootDir string) error {
+	// Check if we're in a git repo for validation
+	gitAvailable := isGitAvailable()
+	var gitStatusBefore []string
+
+	if gitAvailable {
+		cmd := exec.Command("git", "status", "--porcelain", "apps/backend", "apps/frontend")
+		cmd.Dir = rootDir
+		output, err := cmd.Output()
+		if err == nil {
+			gitStatusBefore = strings.Fields(string(output))
+		}
+	}
+
+	// Run the migration
 	cmd := exec.Command("bash", path)
 	cmd.Dir = rootDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	runErr := cmd.Run()
+
+	// Validate no changes to protected directories
+	if gitAvailable {
+		cmd := exec.Command("git", "status", "--porcelain", "apps/backend", "apps/frontend")
+		cmd.Dir = rootDir
+		output, err := cmd.Output()
+		if err == nil {
+			gitStatusAfter := strings.Fields(string(output))
+			if len(gitStatusAfter) > len(gitStatusBefore) {
+				fmt.Fprintf(os.Stderr, "%sERROR: Migration modified protected directories (apps/backend or apps/frontend)%s\n", colorRed, colorReset)
+				fmt.Fprintf(os.Stderr, "Migrations must not modify user code directories.\n")
+				fmt.Fprintf(os.Stderr, "Please revert changes with: git checkout -- apps/backend apps/frontend\n")
+				return fmt.Errorf("migration modified protected directories")
+			}
+		}
+	}
+
+	return runErr
 }
 
 func min(a, b int) int {
