@@ -13,26 +13,25 @@ import (
 )
 
 // setProcessGroup sets up a new process group for proper signal handling on Unix
+// Creates a new session to isolate child processes from terminal signals
 func setProcessGroup(cmd *exec.Cmd) {
+	// Create a new session for child processes
+	// This isolates them from Ctrl+C (SIGINT) sent to the parent
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
+		Setsid: true,
 	}
 }
 
-// killProcess sends SIGTERM to the process group, then SIGKILL if needed
+// killProcess sends SIGINT to gracefully terminate the process, then SIGKILL if needed
+// Using SIGINT instead of SIGTERM avoids exit code 143 errors from bun.
 func killProcess(cmd *exec.Cmd) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
 
-	pgid, err := syscall.Getpgid(cmd.Process.Pid)
-	if err != nil {
-		cmd.Process.Signal(syscall.SIGTERM)
-		return
-	}
-
-	// Kill the entire process group
-	syscall.Kill(-pgid, syscall.SIGTERM)
+	// Send SIGINT (like Ctrl+C) for graceful shutdown
+	// Processes handle SIGINT more gracefully than SIGTERM
+	cmd.Process.Signal(syscall.SIGINT)
 
 	done := make(chan error, 1)
 	go func() {
@@ -41,8 +40,10 @@ func killProcess(cmd *exec.Cmd) {
 
 	select {
 	case <-done:
+		// Process exited
 	case <-time.After(2 * time.Second):
-		syscall.Kill(-pgid, syscall.SIGKILL)
+		// Process didn't exit, force kill with SIGKILL
+		cmd.Process.Kill()
 		cmd.Wait()
 	}
 }

@@ -42,6 +42,9 @@ apps/
   start/                 # Startup binary project
   go.mod                  # Encore Go module
   encore.app              # Encore configuration
+logs/                    # Application logs (auto-created)
+  backend.log             # Encore/backend output with timestamps
+  frontend.log            # Frontend dev server output with timestamps
 ```
 
 ### Why This Matters
@@ -62,11 +65,66 @@ import (
 )
 ```
 
+## Running the Application
+
+### Building Binaries
+
+**IMPORTANT: All make commands must be run from the repository root directory.**
+
+Use the Makefile at the repository root to build startup binaries for different platforms and environments:
+
+```bash
+# From repository root:
+cd /path/to/base
+
+# Build all binaries (dev for Linux/macOS/Windows, prod for Linux)
+make all
+
+# Build specific targets
+make dev.linux    # Linux development binary
+make dev.macos    # macOS ARM64 development binary
+make dev.exe      # Windows development binary
+make prod.linux   # Linux production binary (optimized with -s -w)
+
+# Clean built binaries
+make clean
+```
+
+**Binary Types:**
+
+- **`dev.*` binaries** - Development builds with full debugging symbols and logging. Use these for local development and testing. The `env=dev` build flag enables development-specific features like verbose logging and relaxed security.
+
+- **`prod.*` binaries** - Production builds optimized for deployment. Stripped of debug symbols (`-s -w` ldflags) for smaller size and better performance. The `env=prod` build flag enables production-hardened settings.
+
+Binaries are output to the repository root with descriptive names (e.g., `dev.macos`, `prod.linux`).
+
+### Logging
+
+**All application output is automatically logged using PTY (pseudo-terminal) sessions.**
+
+When running the application:
+- Real-time output (with colors) is displayed in your terminal
+- Clean, timestamped logs are written to `logs/` directory:
+  - `logs/backend.log` - Encore/backend output (ANSI codes stripped)
+  - `logs/frontend.log` - Frontend dev server output (ANSI codes stripped)
+
+The logs directory is automatically created on first run. Use `make clean-logs` to remove log files.
+
+See `ptyx-logging` skill for full documentation on the logging system.
+
+### Versioning
+
+Set a custom version during build (run from repository root):
+```bash
+make VERSION=2.1.0 all
+```
+
 ## Encore Skills
 
 This project uses skills to provide focused documentation for Encore development. Skills are automatically loaded when relevant.
 
 Available skills:
+- `ptyx-logging` - PTY-based logging system that intercepts and logs all Encore/backend and frontend output with clean, timestamped entries
 - `encore-startup-system` - Build and run startup binaries, port management, upgrades
 - `encore-apis-services` - Define APIs, services, raw endpoints, service-to-service calls
 - `encore-databases` - SQL databases, migrations, external and shared databases

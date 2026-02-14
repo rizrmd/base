@@ -40,7 +40,7 @@ prod.linux:
 
 **Build Commands:**
 ```bash
-cd apps/start
+# From repository root
 make all         # Build all binaries
 make dev.macos   # Build macOS dev binary only
 make clean       # Remove all built binaries
@@ -190,8 +190,8 @@ Handles base template updates from a remote repository:
 ## Binary Lifecycle
 
 ```bash
-# 1. Build
-cd apps/start && make dev.macos
+# 1. Build (from repository root)
+make dev.macos
 
 # 2. Run
 ./dev.macos                    # Development (Bun + Encore)

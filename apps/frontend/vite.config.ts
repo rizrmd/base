@@ -1,20 +1,14 @@
-import { reactRouter } from "@react-router/dev/vite";
+import path from "path";
 import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import tsconfigPaths from "vite-tsconfig-paths";
 
+// https://vite.dev/config/
 export default defineConfig({
-  plugins: [tailwindcss(), reactRouter(), tsconfigPaths()],
-  clearScreen: false,
-  server: {
-    port: parseInt(process.env.FRONTEND_PORT || "5390", 10),
-    strictPort: true,
-    // Configure HMR to use Encore's port when accessed through proxy
-    hmr: process.env.ENCORE_PORT
-      ? {
-          clientPort: parseInt(process.env.ENCORE_PORT, 10),
-          host: "localhost",
-        }
-      : true,
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
   },
 });
