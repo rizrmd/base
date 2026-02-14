@@ -27,15 +27,6 @@ else
     echo "  ptyx dependency already exists in go.mod"
 fi
 
-# Ensure CLAUDE.md mentions ptyx-logging skill
-if ! grep -q "ptyx-logging" .claude/CLAUDE.md 2>/dev/null; then
-    echo "  Adding ptyx-logging skill to CLAUDE.md..."
-    # This will be handled by the upgrade script itself
-    echo "  Note: CLAUDE.md will be updated by upgrade script"
-else
-    echo "  CLAUDE.md already references ptyx-logging"
-fi
-
 echo ""
 echo "Migration complete! Changes:"
 echo "  - Startup binary now captures all output (Encore + frontend) using PTY"

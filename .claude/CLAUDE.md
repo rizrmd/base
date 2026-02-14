@@ -110,8 +110,6 @@ When running the application:
 
 The logs directory is automatically created on first run. Use `make clean-logs` to remove log files.
 
-See `ptyx-logging` skill for full documentation on the logging system.
-
 ### Versioning
 
 Set a custom version during build (run from repository root):
@@ -124,7 +122,6 @@ make VERSION=2.1.0 all
 This project uses skills to provide focused documentation for Encore development. Skills are automatically loaded when relevant.
 
 Available skills:
-- `ptyx-logging` - PTY-based logging system that intercepts and logs all Encore/backend and frontend output with clean, timestamped entries
 - `encore-startup-system` - Build and run startup binaries, port management, upgrades
 - `encore-apis-services` - Define APIs, services, raw endpoints, service-to-service calls
 - `encore-databases` - SQL databases, migrations, external and shared databases
